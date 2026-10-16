@@ -1,8 +1,15 @@
 services:
   cloud-copy:
     build: .
+    container_name: cloud-copy
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:${APP_PORT:-27150}:27150"
+    expose:
+      - "27150" # NPM 转发目标：cloud-copy:27150
     volumes:
       - ./data:/data
+    networks:
+      - web_proxy
+
+networks:
+  web_proxy:
+    external: true

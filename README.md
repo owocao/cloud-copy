@@ -20,7 +20,6 @@ cloud-copy/
 ├── favicon.svg
 ├── Dockerfile
 ├── compose.yaml
-├── .env.example
 ├── nginx-paste.conf     # 原项目的 nginx/systemd 部署示例，非 Docker 必需
 └── clipboard.service
 ```
@@ -32,8 +31,6 @@ cloud-copy/
 需要 Docker 与 Compose v2。示例将项目放在 `/docker/cloud-copy`；也可以放在其他目录，以下命令须在仓库根目录执行。
 
 ```bash
-# 在仓库根目录：可选，修改本机监听端口时再编辑 .env
-cp .env.example .env
 # 创建持久化目录，并授予容器内 UID/GID 10001 写权限
 mkdir -p data
 sudo chown 10001:10001 data
@@ -42,13 +39,13 @@ docker compose config
 docker compose up -d --build
 # 验证
 docker compose ps
-curl -fsS http://127.0.0.1:27150/hello
+docker network inspect web_proxy
 docker compose logs --tail 80
 ```
 
-默认只在宿主机 `127.0.0.1:27150` 监听。修改 `.env` 中的 `APP_PORT` 后，验证时也应使用新端口。`./data` 是持久化目录，重建容器不会自动清空；备份时请备份此目录。`.env`、`data/` 和 `certs/` 不纳入 Git。
+默认不发布宿主机端口，容器通过已有的外部 Docker 网络 `web_proxy` 对 Nginx Proxy Manager（NPM）提供内部端口 `27150`。启动前确保该网络存在，且 NPM 也在此网络中。`expose` 仅标明内部端口，不等于开放公网端口。`./data` 是持久化目录，重建容器不会自动清空；备份时请备份此目录。`.env`、`data/` 和 `certs/` 不纳入 Git。
 
-**通过 HTTPS 对外访问：**自行配置 DNS、证书和反向代理。若代理运行在同一宿主机，可将上游指向 `http://127.0.0.1:27150`（或自定义端口）。若代理运行在另一个容器中，容器里的 `127.0.0.1` **不是**宿主机，也无法连接此默认映射；部署时需要根据实际代理网络另行配置共享 Docker 网络及容器上游地址。不要为了方便直接把应用端口暴露到公网。仓库不包含真实域名或证书信息。
+**通过 HTTPS 对外访问：**在 NPM 中填写转发主机名 `cloud-copy`、转发端口 `27150`；DNS 和证书在实际部署环境中配置，不写进仓库。验证时可从同一 `web_proxy` 网络中的容器访问 `http://cloud-copy:27150/hello`。不要为了方便直接把应用端口暴露到公网。
 
 ## 不使用 Docker
 

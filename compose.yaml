@@ -1,0 +1,8 @@
+services:
+  cloud-copy:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-27150}:27150"
+    volumes:
+      - ./data:/data

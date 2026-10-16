@@ -1,76 +1,64 @@
-# 云剪贴板 Cloud Clipboard
+# 云剪贴板
 
-跨设备复制粘贴，文本 / 图片 / 文件，一个链接搞定。
+跨设备分享文本、图片和文件：创建剪贴板，取得两位短码链接，在另一台设备打开即可读取。可手动清空；创建 24 小时后自动过期。
 
-在电脑 A 上创建一条剪贴板，得到一个形如 `https://paste.example.com/a7` 的短链接；在手机或另一台电脑上打开这个链接，即可读取内容，用完点「清空」即焚。
+> 房间码只有 1296 种，可被枚举。这里的短码不是访问密码，不适合传输密码、令牌或其他敏感资料。
 
-我已部署的 demo: https://paste.940304.xyz
+## 功能与结构
 
-## 产品特色
+- 文本可复制；图片、文件可拖入、选择或粘贴上传，单个文件上限 100 MB。
+- 后端 `server.py` 仅使用 Python 标准库；前端由 `index.html`、`style.css`、`app.js` 和 `favicon.svg` 组成。
+- 数据保存在 `/data/<code>/`（Docker）或项目内 `data/<code>/`（直接运行）；过期清理线程每小时扫描一次。
+- 分享链接根据浏览器当前访问地址生成，不需要在源码里写入部署域名。
 
-- **一个链接，一份内容** —— 基于「房间码」的多份剪贴板，不同链接之间互不干扰，最多同时 1296 份。
-- **文本不限长度** —— 长文档、日志、代码，想传多少传多少。
-- **图片 / 文件 ≤ 100MB** —— 拖拽、点击或直接粘贴图片即可上传。
-- **短码易输入** —— 两位小写字母 + 数字（`a7`、`9k`…），在另一台设备手输 URL 也不费劲。
-- **自动过期，即焚即清** —— 内容 24 小时后自动删除，后台每小时清理；点「清空」立即删除并释放链接。
-- **零依赖后端** —— 纯 Python3 标准库实现，无需 pip、无需数据库，一个文件跑起来。
-
-## 架构
-
-```
-浏览器 ──HTTPS──> nginx ──proxy──> Python3 (server.py, 127.0.0.1:27150)
-                                    └── data/<code>/text.txt
-                                        data/<code>/files/
-```
-
-- `server.py`：无框架的 Python 后端，负责分配码、读写文本/文件、过期清理。
-- `index.html` / `style.css` / `app.js`：单页前端，根据路径自动切换「创建页 / 查看页」。
-- `nginx-paste.conf`：反向代理 + HTTPS 终止（SSL 证书复用 acme 通配证书）。
-- `clipboard.service`：systemd 服务单元，守护后端进程。
-
-## 目录结构
-
-```
-cloud-clipboard/
-├── server.py          # 后端服务（Python3 标准库）
-├── index.html         # 前端页面
-├── style.css          # 样式
-├── app.js             # 交互逻辑
-├── favicon.svg        # 网站图标
-├── nginx-paste.conf   # nginx 配置（放到 /etc/nginx/sites-enabled/）
-└── clipboard.service  # systemd 服务（放到 /etc/systemd/system/）
+```text
+cloud-copy/
+├── server.py
+├── index.html
+├── style.css
+├── app.js
+├── favicon.svg
+├── Dockerfile
+├── compose.yaml
+├── .env.example
+├── nginx-paste.conf     # 原项目的 nginx/systemd 部署示例，非 Docker 必需
+└── clipboard.service
 ```
 
-## 部署
+## Docker Compose 部署
 
-> 以域名 `paste.example.com`、目录 `/srv/clipboard` 为例。
+以下是**部署说明**，不会因阅读或克隆仓库自动启动服务。使用完整仓库作为构建目录，不要只用缺少前端静态文件的独立压缩包。
+
+需要 Docker 与 Compose v2。示例将项目放在 `/docker/cloud-copy`；也可以放在其他目录，以下命令须在仓库根目录执行。
 
 ```bash
-# 1. DNS 添加记录：paste -> 服务器 IP
-
-# 2. 放置文件并授权（服务以 dk 运行）
-sudo mkdir -p /srv/clipboard
-sudo cp server.py index.html style.css app.js favicon.svg /srv/clipboard/
-sudo chown -R dk:dk /srv/clipboard
-
-# 3. 安装并启动 systemd 服务
-sudo cp clipboard.service /etc/systemd/system/clipboard.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now clipboard
-
-# 4. 配置并重载 nginx
-sudo cp nginx-paste.conf /etc/nginx/sites-enabled/paste.conf
-sudo nginx -t && sudo systemctl reload nginx
+# 在仓库根目录：可选，修改本机监听端口时再编辑 .env
+cp .env.example .env
+# 创建持久化目录，并授予容器内 UID/GID 10001 写权限
+mkdir -p data
+sudo chown 10001:10001 data
+# 检查配置，再构建并启动
+docker compose config
+docker compose up -d --build
+# 验证
+docker compose ps
+curl -fsS http://127.0.0.1:27150/hello
+docker compose logs --tail 80
 ```
 
-> 换域名：改 `nginx-paste.conf` 里的 `server_name` 与证书路径即可。
+默认只在宿主机 `127.0.0.1:27150` 监听。修改 `.env` 中的 `APP_PORT` 后，验证时也应使用新端口。`./data` 是持久化目录，重建容器不会自动清空；备份时请备份此目录。`.env`、`data/` 和 `certs/` 不纳入 Git。
+
+**通过 HTTPS 对外访问：**自行配置 DNS、证书和反向代理。若代理运行在同一宿主机，可将上游指向 `http://127.0.0.1:27150`（或自定义端口）。若代理运行在另一个容器中，容器里的 `127.0.0.1` **不是**宿主机，也无法连接此默认映射；部署时需要根据实际代理网络另行配置共享 Docker 网络及容器上游地址。不要为了方便直接把应用端口暴露到公网。仓库不包含真实域名或证书信息。
+
+## 不使用 Docker
+
+可直接运行 `python3 server.py`，默认监听 `127.0.0.1:27150`，数据写入项目下的 `data/`。仓库保留了原项目的 `clipboard.service` 与 `nginx-paste.conf` 作为参考；其中的用户名、路径、示例域名和证书路径必须按实际环境调整，不能直接套用到 Docker 部署。
 
 ## 使用方式
 
-1. 打开 `https://paste.example.com/`，输入文本（或拖入文件），点「创建剪贴板」。
-2. 页面生成短链接并自动复制，把它发到另一台设备。
-3. 另一台设备打开该链接，即可读取文本、下载文件。
-4. 用完点「清空」，内容即刻删除。
+1. 打开部署后的页面，输入文本或添加文件，点击「创建剪贴板」。
+2. 复制生成的链接，在另一台设备上打开。
+3. 用完点击「清空」，或等待自动过期。
 
 ## API
 
@@ -78,24 +66,14 @@ sudo nginx -t && sudo systemctl reload nginx
 | --- | --- | --- |
 | GET | `/hello` | 健康检查，返回 `{"hello":"world"}` |
 | POST | `/api/new` | 分配码，返回 `{"code":"a7"}` |
-| GET | `/api/<code>` | 查看，返回 `{"text":"...","files":[...]}` |
-| PUT | `/api/<code>/text` | 写入文本（不限长度） |
-| PUT | `/api/<code>/files/<name>` | 上传文件（≤100MB） |
+| GET | `/api/<code>` | 查看文本和文件列表 |
+| PUT | `/api/<code>/text` | 写入文本 |
+| PUT | `/api/<code>/files/<name>` | 上传文件（≤100 MB） |
 | GET | `/api/<code>/files/<name>` | 下载文件 |
-| DELETE | `/api/<code>` | 清空（删除目录并释放码） |
+| DELETE | `/api/<code>` | 清空并释放码 |
 | DELETE | `/api/<code>/files/<name>` | 删除单个文件 |
 
-## 排障
+## 注意
 
-```bash
-systemctl status clipboard --no-pager     # 服务状态
-journalctl -u clipboard -n 30 --no-pager  # 日志
-curl -s http://127.0.0.1:27150/hello      # 健康检查
-```
-
-## 说明
-
-- 数据存于 `data/` 目录，服务启动时自动创建。
-- 过期时长固定 24 小时，清理线程每小时扫描一次。
-- 房间码可被枚举（1296 个），定位是「轻度隔离」，不适用于需要强隐私的场景。
-- 无需注册登录，免费使用无广告，但请规范使用。
+- 删除单个文件、更新文本等操作均基于短码，任何知道或猜到短码的人都可能访问或修改对应内容。
+- 自动过期与每小时清理不是精确到秒的定时删除保证。

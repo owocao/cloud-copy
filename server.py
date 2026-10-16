@@ -34,7 +34,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, 'data')
+DATA_DIR = os.environ.get('CLIPBOARD_DATA_DIR', os.path.join(BASE_DIR, 'data'))
 
 HOST = os.environ.get('CLIPBOARD_HOST', '127.0.0.1')
 PORT = int(os.environ.get('CLIPBOARD_PORT', '27150'))
